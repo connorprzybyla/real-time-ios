@@ -10,58 +10,53 @@ import Foundation
 
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
-public protocol WebSocketManageable {
+protocol WebSocketManageable {
     func connect()
+    func send(message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void))
     func receive() -> AnyPublisher<WebSocketMessage, WebSocketError>
-    func disconnect()
+    func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
 }
 
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
-public class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebSocketManageable {
-    
+public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebSocketManageable {
     private let urlRequest: URLRequest
-    private var urlSession: URLSession?
-    private var webSocketTask: URLSessionWebSocketTask?
+    private var urlSession: URLSessionable?
+    private var webSocketTask: URLSessionWebSocketTaskable?
     private let messageSubject = PassthroughSubject<WebSocketMessage, WebSocketError>()
     
-    public init(urlRequest: URLRequest) {
+    public init(urlRequest: URLRequest,
+                urlSession: URLSessionable) {
         self.urlRequest = urlRequest
+        self.urlSession = urlSession
         super.init()
-        configureURLSession()
     }
     
     public func connect() {
+        webSocketTask = urlSession?.webSocketTaskWith(request: urlRequest)
         webSocketTask?.resume()
-        configureWebSocketTaskReceive()
+        setupWebSocketTaskReceive()
     }
     
     public func receive() -> AnyPublisher<WebSocketMessage, WebSocketError> {
         messageSubject.eraseToAnyPublisher()
     }
     
-    public func disconnect() {
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
+    public func send(message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void)) {
+        webSocketTask?.send(message, completionHandler: { error in
+            completionHandler(error)
+        })
     }
     
-    // MARK: Private
-    
-    private func configureURLSession() {
-        let delegateQueue = OperationQueue()
-        delegateQueue.qualityOfService = .utility
-        
-        urlSession = URLSession(
-            configuration: .default,
-            delegate: self,
-            delegateQueue: delegateQueue
-        )
-        webSocketTask = urlSession?.webSocketTask(with: urlRequest)
+    func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        webSocketTask?.cancel(with: closeCode, reason: reason)
     }
     
-    private func configureWebSocketTaskReceive() {
-        urlSession?.webSocketTask(with: urlRequest)
+    private func setupWebSocketTaskReceive() {
+        urlSession?.webSocketTaskWith(request: urlRequest)
             .receive { [weak self] result in
                 guard let self = self else { return }
+                
                 switch result {
                 case .success(let message):
                     switch message {
@@ -75,13 +70,14 @@ public class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebSocketM
                 case .failure(let error):
                     self.messageSubject.send(completion: .failure(WebSocketError.fatal(error)))
                 }
-                self.configureWebSocketTaskReceive()
+                
+                self.setupWebSocketTaskReceive()
             }
     }
     
     private func decodeWebSocketMessage(with data: Data) -> WebSocketMessage? {
-        guard let webSocketMessage = try? JSONDecoder().decode(WebSocketMessage.self,
-                                                               from: data) else { return nil }
+        guard let webSocketMessage = try? JSONDecoder().decode(WebSocketMessage.self, from: data) else { return nil }
+        
         return webSocketMessage
     }
 }
