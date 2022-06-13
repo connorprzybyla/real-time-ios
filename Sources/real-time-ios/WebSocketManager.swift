@@ -8,22 +8,26 @@
 import Combine
 import Foundation
 
+@available(watchOS 6.0, *)
+@available(tvOS 13.0, *)
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
 protocol WebSocketManageable {
     func connect()
     func send(message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void))
-    func receive() -> AnyPublisher<WebSocketMessage, WebSocketError>
+    func receive() -> AnyPublisher<Data, WebSocketError>
     func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
 }
 
+@available(watchOS 6.0, *)
+@available(tvOS 13.0, *)
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
 public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebSocketManageable {
     private let urlRequest: URLRequest
     private var urlSession: URLSessionable?
     private var webSocketTask: URLSessionWebSocketTaskable?
-    private let messageSubject = PassthroughSubject<WebSocketMessage, WebSocketError>()
+    private let messageSubject = PassthroughSubject<Data, WebSocketError>()
     
     public init(urlRequest: URLRequest,
                 urlSession: URLSessionable) {
@@ -38,17 +42,19 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
         setupWebSocketTaskReceive()
     }
     
-    public func receive() -> AnyPublisher<WebSocketMessage, WebSocketError> {
+    public func receive() -> AnyPublisher<Data, WebSocketError> {
         messageSubject.eraseToAnyPublisher()
     }
     
-    public func send(message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void)) {
+    public func send(message: URLSessionWebSocketTask.Message,
+                     completionHandler: @escaping ((Error?) -> Void)) {
         webSocketTask?.send(message, completionHandler: { error in
             completionHandler(error)
         })
     }
     
-    func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+    public func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode,
+                           reason: Data?) {
         webSocketTask?.cancel(with: closeCode, reason: reason)
     }
     
@@ -61,8 +67,7 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
                 case .success(let message):
                     switch message {
                     case .data(let data):
-                        guard let webSocketMessage = self.decodeWebSocketMessage(with: data) else { return }
-                        self.messageSubject.send(webSocketMessage)
+                        self.messageSubject.send(data)
                     default:
                         return
                     }
@@ -73,11 +78,5 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
                 
                 self.setupWebSocketTaskReceive()
             }
-    }
-    
-    private func decodeWebSocketMessage(with data: Data) -> WebSocketMessage? {
-        guard let webSocketMessage = try? JSONDecoder().decode(WebSocketMessage.self, from: data) else { return nil }
-        
-        return webSocketMessage
     }
 }

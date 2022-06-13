@@ -5,14 +5,141 @@
 //  Created by Connor Przybyla on 4/26/22.
 //
 
-import Foundation
+import Combine
 import XCTest
 
 @testable import real_time_ios
 
+@available(iOS 13.0, *)
+class FakeURLSession: URLSessionable {
+    let fakeURLSessionWebSocketTask: URLSessionWebSocketTaskable
+    
+    init(fakeURLSessionWebSocketTask: URLSessionWebSocketTaskable) {
+        self.fakeURLSessionWebSocketTask = fakeURLSessionWebSocketTask
+    }
+    
+    func webSocketTaskWith(request: URLRequest) -> URLSessionWebSocketTaskable {
+        fakeURLSessionWebSocketTask
+    }
+}
+
+@available(iOS 13.0, *)
+class FakeURLSessionWebSocketTask: URLSessionWebSocketTaskable {
+    
+    var sendMessageSpy: URLSessionWebSocketTask.Message?
+    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void)) {
+        sendMessageSpy = message
+        completionHandler(nil)
+    }
+    
+    var receiveTestResult: Result<URLSessionWebSocketTask.Message, Error>?
+    func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void) {
+        completionHandler(receiveTestResult!)
+    }
+    
+    var didCallResume = false
+    func resume() {
+        didCallResume = true
+    }
+    
+    var didCallCancel = false
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        didCallCancel = true
+    }
+}
+
+@available(iOS 13.0, *)
 class WebSocketManagerTests: XCTestCase {
-    func testWebSocketManagerInitialization() {
-        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!))
-        XCTAssertNotNil(sut)
+    func testWebSocketManagerConnectCallsWebSocketTaskResume() {
+        let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
+        let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
+        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+                                   urlSession: fakeURLSession)
+        
+        sut.connect()
+        
+        XCTAssertTrue(fakeURLSessionWebSocketTask.didCallResume)
+    }
+    
+    func testWebSocketManagerDisconnectCallsWebSocketTaskCancel() {
+        let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
+        let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
+        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+                                   urlSession: fakeURLSession)
+        sut.connect()
+        sut.disconnect(with: .goingAway, reason: nil)
+        
+        XCTAssertTrue(fakeURLSessionWebSocketTask.didCallCancel)
+    }
+    
+    func testWebSocketManagerSendIsSuccessful() {
+        let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
+        let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
+        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+                                   urlSession: fakeURLSession)
+        sut.connect()
+        
+        var receivedError: Error?
+        sut.send(message: .string("Are you there?")) { error in
+            guard let error = error else { return }
+            receivedError = error
+        }
+        
+        let expectedSendMessageSpy: URLSessionWebSocketTask.Message = .string("Are you there?")
+        XCTAssertEqual(expectedSendMessageSpy, fakeURLSessionWebSocketTask.sendMessageSpy)
+        XCTAssertNil(receivedError)
+    }
+    
+    func testWebSocketManagerReceiveIsSuccessful() {
+        let expectation = XCTestExpectation()
+        var subscriptions = Set<AnyCancellable>()
+        let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
+        let jsonObject: [String: Any] = [
+            "name": "Apple",
+            "price": 999.99,
+            "date": "06/08/2022 12:00"
+        ]
+        fakeURLSessionWebSocketTask.receiveTestResult = .success(.data(WebSocketManagerTests.jsonToData(json: jsonObject)!))
+        let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
+        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+                                   urlSession: fakeURLSession)
+        sut.connect()
+        var receivedWebSocketMessage: Data?
+        sut.receive()
+            .sink { _ in } receiveValue: { webSocketMessage in
+                receivedWebSocketMessage = webSocketMessage
+                expectation.fulfill()
+            }.store(in: &subscriptions)
+        
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(WebSocketManagerTests.jsonToData(json: jsonObject), receivedWebSocketMessage)
+    }
+}
+
+@available(iOS 13.0, *)
+extension WebSocketManagerTests {
+    static func jsonToData(json: Any) -> Data? {
+        do {
+            return try JSONSerialization.data(withJSONObject: json, options: JSONSerialization.WritingOptions.prettyPrinted)
+        } catch let error {
+            print("jsonToData failed with \(error)")
+        }
+        return nil
+    }
+}
+
+// MARK: - URLSessionWebSocketTask.Message + Equatable
+
+@available(iOS 13.0, *)
+extension URLSessionWebSocketTask.Message: Equatable {
+    public static func == (lhs: URLSessionWebSocketTask.Message, rhs: URLSessionWebSocketTask.Message) -> Bool {
+        switch (lhs, rhs) {
+        case (.string(let lhsString), .string(let rhsString)):
+            return lhsString == rhsString
+        case (.data(let lhsData), .data(let rhsData)):
+            return lhsData == rhsData
+        default:
+            return false
+        }
     }
 }
