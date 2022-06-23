@@ -53,7 +53,7 @@ class WebSocketManagerTests: XCTestCase {
     func testWebSocketManagerConnectCallsWebSocketTaskResume() {
         let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
         let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
-        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+        let sut = WebSocketManager<WebSocketMessage>(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
                                    urlSession: fakeURLSession)
         
         sut.connect()
@@ -64,7 +64,7 @@ class WebSocketManagerTests: XCTestCase {
     func testWebSocketManagerDisconnectCallsWebSocketTaskCancel() {
         let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
         let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
-        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+        let sut = WebSocketManager<WebSocketMessage>(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
                                    urlSession: fakeURLSession)
         sut.connect()
         sut.disconnect(with: .goingAway, reason: nil)
@@ -75,7 +75,7 @@ class WebSocketManagerTests: XCTestCase {
     func testWebSocketManagerSendIsSuccessful() {
         let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
         let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
-        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+        let sut = WebSocketManager<WebSocketMessage>(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
                                    urlSession: fakeURLSession)
         sut.connect()
         
@@ -95,16 +95,16 @@ class WebSocketManagerTests: XCTestCase {
         var subscriptions = Set<AnyCancellable>()
         let fakeURLSessionWebSocketTask = FakeURLSessionWebSocketTask()
         let jsonObject: [String: Any] = [
-            "name": "Apple",
-            "price": 999.99,
-            "date": "06/08/2022 12:00"
+            "data": "Apple",
+            "socketStatus": 999.99,
+            "timeUTC": "06/08/2022 12:00"
         ]
         fakeURLSessionWebSocketTask.receiveTestResult = .success(.data(WebSocketManagerTests.jsonToData(json: jsonObject)!))
         let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
-        let sut = WebSocketManager(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+        let sut = WebSocketManager<WebSocketMessage>(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
                                    urlSession: fakeURLSession)
         sut.connect()
-        var receivedWebSocketMessage: Data?
+        var receivedWebSocketMessage: WebSocketMessage?
         sut.receive()
             .sink { _ in } receiveValue: { webSocketMessage in
                 receivedWebSocketMessage = webSocketMessage
@@ -112,7 +112,8 @@ class WebSocketManagerTests: XCTestCase {
             }.store(in: &subscriptions)
         
         wait(for: [expectation], timeout: 1.0)
-        XCTAssertEqual(WebSocketManagerTests.jsonToData(json: jsonObject), receivedWebSocketMessage)
+        let expectedWebSocketMessage = WebSocketManagerTests.decodeWebSocketMessage(with: WebSocketManagerTests.jsonToData(json: jsonObject))
+        XCTAssertEqual(expectedWebSocketMessage, receivedWebSocketMessage)
     }
 }
 
@@ -120,11 +121,21 @@ class WebSocketManagerTests: XCTestCase {
 extension WebSocketManagerTests {
     static func jsonToData(json: Any) -> Data? {
         do {
-            return try JSONSerialization.data(withJSONObject: json, options: JSONSerialization.WritingOptions.prettyPrinted)
+            return try JSONSerialization.data(
+                withJSONObject: json,
+                options: JSONSerialization.WritingOptions.prettyPrinted
+            )
         } catch let error {
             print("jsonToData failed with \(error)")
         }
         return nil
+    }
+    
+    static func decodeWebSocketMessage(with data: Data?) -> WebSocketMessage? {
+        guard let data = data else { return nil }
+        guard let webSocketMessage = try? JSONDecoder().decode(WebSocketMessage.self, from: data) else { return nil }
+        
+        return webSocketMessage
     }
 }
 

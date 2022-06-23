@@ -13,9 +13,10 @@ import Foundation
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
 protocol WebSocketManageable {
+    associatedtype WebSocketMessage: Decodable
     func connect()
     func send(message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void))
-    func receive() -> AnyPublisher<Data, WebSocketError>
+    func receive() -> AnyPublisher<WebSocketMessage, WebSocketError>
     func disconnect(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
 }
 
@@ -23,11 +24,13 @@ protocol WebSocketManageable {
 @available(tvOS 13.0, *)
 @available(iOS 13.0, *)
 @available(macOS 10.15, *)
-public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebSocketManageable {
+public final class WebSocketManager<T: Decodable>: NSObject, URLSessionWebSocketDelegate, WebSocketManageable {
+    typealias WebSocketMessage = T
+    
     private let urlRequest: URLRequest
     private var urlSession: URLSessionable?
     private var webSocketTask: URLSessionWebSocketTaskable?
-    private let messageSubject = PassthroughSubject<Data, WebSocketError>()
+    private let messageSubject = PassthroughSubject<T, WebSocketError>()
     
     public init(urlRequest: URLRequest,
                 urlSession: URLSessionable) {
@@ -42,7 +45,7 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
         setupWebSocketTaskReceive()
     }
     
-    public func receive() -> AnyPublisher<Data, WebSocketError> {
+    public func receive() -> AnyPublisher<T, WebSocketError> {
         messageSubject.eraseToAnyPublisher()
     }
     
@@ -67,7 +70,8 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
                 case .success(let message):
                     switch message {
                     case .data(let data):
-                        self.messageSubject.send(data)
+                        guard let webSocketMessage = Self.decodeWebSocketMessage(with: data) else { return }
+                        self.messageSubject.send(webSocketMessage)
                     default:
                         return
                     }
@@ -79,4 +83,10 @@ public final class WebSocketManager: NSObject, URLSessionWebSocketDelegate, WebS
                 self.setupWebSocketTaskReceive()
             }
     }
+    
+    private static func decodeWebSocketMessage(with data: Data) -> WebSocketMessage? {
+          guard let webSocketMessage = try? JSONDecoder().decode(WebSocketMessage.self, from: data) else { return nil }
+
+          return webSocketMessage
+      }
 }
