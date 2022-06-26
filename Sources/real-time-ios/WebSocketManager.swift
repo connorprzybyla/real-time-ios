@@ -30,7 +30,7 @@ public final class WebSocketManager<T: Decodable>: NSObject, URLSessionWebSocket
     private let urlRequest: URLRequest
     private var urlSession: URLSessionable?
     private var webSocketTask: URLSessionWebSocketTaskable?
-    private let messageSubject = PassthroughSubject<T, WebSocketError>()
+    private let messageSubject = PassthroughSubject<WebSocketMessage, WebSocketError>()
     
     public init(urlRequest: URLRequest,
                 urlSession: URLSessionable) {
