@@ -1,5 +1,3 @@
-## real-time-ios
-
 A lightweight, testable, and scalable Swift package for all your WebSocket needs.
 
 This package is open-sourced and built to support devices across Apple's ecosystem including iOS, iPadOS, watchOS, tvOS, and macOS.
@@ -7,16 +5,16 @@ This package is open-sourced and built to support devices across Apple's ecosyst
 
 Setup: 
 
-First, you'll need to add this package to your Xcode project. See Apple's official docs if you don't already know how to. [view them here](https://developer.apple.com/documentation/xcode/adding-package-dependencies-to-your-app)
+First, you'll need to add this package to your Xcode project. See Apple's official docs if you don't already know how to. [View them here](https://developer.apple.com/documentation/xcode/adding-package-dependencies-to-your-app)
 
 
 ## How to use WebSocketManager
 
-- Step 1.) Create an instance of WebSocketManager. WebSocketManager is a generic class that requires a decode type. This type is the model you want to use for message decoding.
+- Create an instance of WebSocketManager. WebSocketManager is a generic class that requires a decodable type. This type is the model you want to use for message decoding.
 
  
  Example of a websocket message for real-time stock information
- 
+``` 
 {
   "stocks": [
     {
@@ -41,9 +39,11 @@ First, you'll need to add this package to your Xcode project. See Apple's offici
     }
   ]
 }
+```
 
 Your decodable model should look like:
-    
+ 
+```    
 struct WebSocketMessage: Decodable {
     var stocks: [Stock]
     
@@ -53,12 +53,14 @@ struct WebSocketMessage: Decodable {
         var price: Double 
     }
 }
+```
 
 Now, with your newly created WebSocketManager, you can subscribe to the receive publisher. You will now receive values over time.
 
 
 Receiving messages:
 
+```
 var subscriptions = Set<AnyCancellables>()
 let webSocketManager = WebSocketManager()
 
@@ -69,3 +71,4 @@ webSocketManager
     }, receiveCompletion: { completion in
         // handle completion here
     }.store(in: &subscriptions)
+```
