@@ -10,43 +10,7 @@ import XCTest
 
 @testable import real_time_ios
 
-@available(iOS 13.0, *)
-class FakeURLSession: URLSessionable {
-    let fakeURLSessionWebSocketTask: URLSessionWebSocketTaskable
-    
-    init(fakeURLSessionWebSocketTask: URLSessionWebSocketTaskable) {
-        self.fakeURLSessionWebSocketTask = fakeURLSessionWebSocketTask
-    }
-    
-    func webSocketTaskWith(request: URLRequest) -> URLSessionWebSocketTaskable {
-        fakeURLSessionWebSocketTask
-    }
-}
 
-@available(iOS 13.0, *)
-class FakeURLSessionWebSocketTask: URLSessionWebSocketTaskable {
-    
-    var sendMessageSpy: URLSessionWebSocketTask.Message?
-    func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping ((Error?) -> Void)) {
-        sendMessageSpy = message
-        completionHandler(nil)
-    }
-    
-    var receiveTestResult: Result<URLSessionWebSocketTask.Message, Error>?
-    func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void) {
-        completionHandler(receiveTestResult!)
-    }
-    
-    var didCallResume = false
-    func resume() {
-        didCallResume = true
-    }
-    
-    var didCallCancel = false
-    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        didCallCancel = true
-    }
-}
 
 @available(iOS 13.0, *)
 class WebSocketManagerTests: XCTestCase {
@@ -101,8 +65,10 @@ class WebSocketManagerTests: XCTestCase {
         ]
         fakeURLSessionWebSocketTask.receiveTestResult = .success(.data(WebSocketManagerTests.jsonToData(json: jsonObject)!))
         let fakeURLSession = FakeURLSession(fakeURLSessionWebSocketTask: fakeURLSessionWebSocketTask)
-        let sut = WebSocketManager<WebSocketMessage>(urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
-                                   urlSession: fakeURLSession)
+        let sut = WebSocketManager<WebSocketMessage>(
+            urlRequest: URLRequest(url: URL(string: "wss://socket.api/v1")!),
+            urlSession: fakeURLSession
+        )
         sut.connect()
         var receivedWebSocketMessage: WebSocketMessage?
         sut.receive()
@@ -111,6 +77,8 @@ class WebSocketManagerTests: XCTestCase {
                 expectation.fulfill()
             }.store(in: &subscriptions)
         
+        
+        fakeURLSessionWebSocketTask.completionHandler = .success(.data(WebSocketManagerTests.jsonToData(json: jsonObject)!))
         wait(for: [expectation], timeout: 1.0)
         let expectedWebSocketMessage = WebSocketManagerTests.decodeWebSocketMessage(with: WebSocketManagerTests.jsonToData(json: jsonObject))
         XCTAssertEqual(expectedWebSocketMessage, receivedWebSocketMessage)

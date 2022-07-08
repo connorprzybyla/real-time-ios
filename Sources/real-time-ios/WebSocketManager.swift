@@ -28,7 +28,7 @@ public final class WebSocketManager<T: Decodable>: NSObject, URLSessionWebSocket
     typealias WebSocketMessage = T
     
     private let urlRequest: URLRequest
-    private var urlSession: URLSessionable?
+    private var urlSession: URLSessionable
     private var webSocketTask: URLSessionWebSocketTaskable?
     private let messageSubject = PassthroughSubject<WebSocketMessage, WebSocketError>()
     
@@ -40,7 +40,7 @@ public final class WebSocketManager<T: Decodable>: NSObject, URLSessionWebSocket
     }
     
     public func connect() {
-        webSocketTask = urlSession?.webSocketTaskWith(request: urlRequest)
+        webSocketTask = urlSession.webSocketTaskWith(request: urlRequest)
         webSocketTask?.resume()
         setupWebSocketTaskReceive()
     }
@@ -62,7 +62,7 @@ public final class WebSocketManager<T: Decodable>: NSObject, URLSessionWebSocket
     }
     
     private func setupWebSocketTaskReceive() {
-        urlSession?.webSocketTaskWith(request: urlRequest)
+        urlSession.webSocketTaskWith(request: urlRequest)
             .receive { [weak self] result in
                 guard let self = self else { return }
                 
